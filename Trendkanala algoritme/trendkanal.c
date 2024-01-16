@@ -21,19 +21,18 @@ CPositionInfo position;
 double iMABuffer[];
 //double iMABuffer2[];
 input int   InpStart    =  1;
-int   InpLength   =  50;
+int   InpLength   =  100;
 //int   InpLength1   =;
 datetime gBarTime;
 datetime lastBarTime;
 int Bars;
 
-
-input double stopLossPips = 0.040;
-input double tpPips  = 0.060;;
+input double stopLossPips = 0.020;
+input double tpPips  = 0.04;
 static input long   InpMagicnumber = 64356; // magicnumber
 static input double InpLots = 0.01;    // lot size
 input bool trailingStopLoss = true; // Enable trailing stop loss
-input int stopLossPoints = 4000;
+input int stopLossPoints = 2000;
 /* Strategi som skal implementere både brudd og retur av pris
 bool sale = false;
 //bool buy = false;
@@ -153,40 +152,53 @@ void  OnTick() {
    
    
    
-   // Kalkulere førstegangsstopp loss
-   double stopLossPrice = currentTick.bid - stopLossPips;
-   double tpPrice       = currentTick.ask + tpPips;
+   // Selge ut når den kommer til motsatt trendlinje
+   double buyStopLossPrice = currentTick.bid - stopLossPips;
+   double buyTpPrice       = currentTick.ask + tpPips;
+   double sellStopLossPrice = currentTick.bid + stopLossPips;
+   double sellTpPrice       = currentTick.ask - tpPips;
    
+   uint PositionsCount = PositionsTotal();
+   if (PositionsCount > 0)
+   {
+       for (int i = PositionsCount - 1; i >= 0; i--)
+       {
+           if (position.SelectByIndex(i) && position.Symbol() == Symbol())
+           {
+               ENUM_POSITION_TYPE type = position.PositionType();
+               double CurrentPrice = position.PriceCurrent();
+               ulong ticket = PositionGetTicket(i);
    
-  
+               if (type == POSITION_TYPE_BUY)
+               {
+                   if (CurrentPrice >= price_higher)
+                   {
+                       trade.PositionClose(ticket);
+                
+                   }
+               }
+                 if (type == POSITION_TYPE_SELL)
+               {
+                   if (CurrentPrice <= price_lower)
+                   {
+                       trade.PositionClose(ticket);
+                   
+
+                   }
+               }
+           }
+       }
+   }
+                          
    
    
    //selg
    if(cntSell==0 && previousTick.ask<price_higher && currentTick.ask>=price_higher){
       
-      trade.PositionOpen(_Symbol, ORDER_TYPE_SELL, InpLots, currentTick.bid , tpPrice, stopLossPrice, "Nils");
+      trade.PositionOpen(_Symbol, ORDER_TYPE_SELL, InpLots, currentTick.bid , sellStopLossPrice, sellTpPrice, "Nils");
       
-      /* Annen strategi som jobbes med
-      sell_price = currentTick.ask;
-      sale = true;
-      telle_sell++;
-      */
    }
    
-   /* Jobber her med å se hvordan prisen har reagert etter ett visst antall barer etter kjøpssignal
-   if (sale==true && IsNewBar()){
-      telle_sell ++;
-      if(telle_sell>=6){
-         if (currentTick.ask>sell_price){
-            trade.PositionOpen(_Symbol, ORDER_TYPE_BUY, InpLots, currentTick.ask, stopLossPrice, tpPrice, "Nils");
-            }
-         if (currentTick.ask<=sell_price){
-            trade.PositionOpen(_Symbol, ORDER_TYPE_SELL, InpLots, currentTick.bid , tpPrice, stopLossPrice, "Nils");
-            }
-         }
-      }
-      
-    */  
    
    
    // Kjøp
@@ -194,7 +206,7 @@ void  OnTick() {
    
       
       
-      ulong ticket_buy = trade.PositionOpen(_Symbol, ORDER_TYPE_BUY, InpLots, currentTick.ask, stopLossPrice, tpPrice, "Nils");
+      ulong ticket_buy = trade.PositionOpen(_Symbol, ORDER_TYPE_BUY, InpLots, currentTick.ask, buyStopLossPrice, buyTpPrice, "Nils");
       
      
       
@@ -203,36 +215,55 @@ void  OnTick() {
    
    // Trailing stop loss 
    double stopLoss = stopLossPoints * Point();
-   uint PositionsCount = PositionsTotal();
-   if(trailingStopLoss && PositionsCount > 0)
-     {
-      for(int i = PositionsCount-1; i >= 0; i--)
-        {
-         if(position.SelectByIndex(i) && position.Symbol() == Symbol())
+   //uint PositionsCount = PositionsTotal();
+   if (trailingStopLoss && PositionsCount > 0)
+   {
+       for (int i = PositionsCount - 1; i >= 0; i--)
+       {
+           if (position.SelectByIndex(i) && position.Symbol() == Symbol())
            {
-            ENUM_POSITION_TYPE type = position.PositionType();
-            double CurrentSL = position.StopLoss();
-            double CurrentTP = position.TakeProfit();
-            double CurrentPrice = position.PriceCurrent();
-    
-            if(type == POSITION_TYPE_BUY)
-              {
-               if(CurrentPrice - stopLoss > CurrentSL || CurrentSL == 0.0)
-                 {
-                  trade.PositionModify(position.Ticket(), NormalizeDouble((CurrentPrice - stopLoss), Digits()), 0);
-                 }
-              }
-            if(type == POSITION_TYPE_SELL)
-              {
-               if(CurrentPrice + stopLoss < CurrentSL || CurrentSL == 0.0)
-                 {
-                  trade.PositionModify(position.Ticket(), NormalizeDouble((CurrentPrice + stopLoss), Digits()), 0);
-                 }
-              }
-           }
-        }
-     }
+               ENUM_POSITION_TYPE type = position.PositionType();
+               double CurrentSL = position.StopLoss();
+               double CurrentTP = position.TakeProfit();
+               double CurrentPrice = position.PriceCurrent();
+               
    
+               if (type == POSITION_TYPE_BUY)
+               {
+                   if (CurrentPrice - stopLoss > CurrentSL || CurrentSL == 0.0)
+                   {
+                       trade.PositionModify(position.Ticket(), NormalizeDouble((CurrentPrice - stopLoss), Digits()), 0);
+   
+                       // Her tenger vi inn stop lossen i grafen
+                       ObjectDelete(0, "TrailingStopLossLineBuy"); 
+                       ObjectCreate(0, "TrailingStopLossLineBuy", OBJ_TREND, 0, 0, CurrentSL, InpLength, CurrentSL);
+                       ObjectSetInteger(0, "TrailingStopLossLineBuy", OBJPROP_COLOR, clrGreen);
+                       ObjectSetInteger(0, "TrailingStopLossLineBuy", OBJPROP_WIDTH, 1);
+                       ObjectSetInteger(0, "TrailingStopLossLineBuy", OBJPROP_RAY_RIGHT, true);
+                       ObjectSetInteger(0, "TrailingStopLossLineBuy", OBJPROP_RAY_LEFT, false);
+                   }
+               }
+               if (type == POSITION_TYPE_SELL)
+               {
+                   if (CurrentPrice + stopLoss < CurrentSL || CurrentSL == 0.0)
+                   {
+                       trade.PositionModify(position.Ticket(), NormalizeDouble((CurrentPrice + stopLoss), Digits()), 0);
+   
+                       // Her tenger vi inn stop lossen i grafen
+                       ObjectDelete(0, "TrailingStopLossLineSell"); 
+                       ObjectCreate(0, "TrailingStopLossLineSell", OBJ_TREND, 0, 0, CurrentSL, InpLength, CurrentSL);
+                       ObjectSetInteger(0, "TrailingStopLossLineSell", OBJPROP_COLOR, clrRed);
+                       ObjectSetInteger(0, "TrailingStopLossLineSell", OBJPROP_WIDTH, 1);
+                       ObjectSetInteger(0, "TrailingStopLossLineSell", OBJPROP_RAY_RIGHT, true);
+                       ObjectSetInteger(0, "TrailingStopLossLineSell", OBJPROP_RAY_LEFT, false);
+                   }
+               }
+           }
+       }
+   }
+   
+   // ..
+      
    delete trend;
    
 
@@ -276,3 +307,5 @@ bool CountOpenPositions(int &cntBuy, int &cntSell){
    
    return true;
 }
+
+   
