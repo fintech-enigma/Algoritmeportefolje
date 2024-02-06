@@ -4,12 +4,16 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import datetime as dt
+import matplotlib.pyplot as plt, mpld3
+from xml.etree import ElementTree as ET
+from matplotlib.backends.backend_svg import FigureCanvasSVG
+from io import BytesIO
 
 """
 This file takes the arguments ticker and days to calculate the VaR (Value at Risk). The VaR is printed as a number between -1 and 1 and represents a percentage. If the 1d VaR of a stock is -2.5%, there is a 5% probability of losing 2,5% of an investment
 Arguments:
 - Ticker: String, remember to use suffix '.OL' after ticker for stocks on the OSE
-- days: String, user chooses between daily, 5-day or 20-day VaR
+- days: String, user chooses between daily, 1d, 1wk, 1mo, ytd, 1y, 3y, 5y, 10y VaR
 """
 
 def calculate_var(returns, confidence_level=0.95):
@@ -35,27 +39,114 @@ if __name__ == "__main__":
     try:
         data = yf.download(ticker, start=start_date, end=today)
         if time_slot == '1d':
-            var = calculate_var(data['Adj Close'].pct_change().dropna())
+            data['1d'] = data['Adj Close'].pct_change()
+            var = calculate_var(data['1d'].dropna())
+
+            figure = plt.figure(figsize=(10, 6))
+            plt.hist(data['1d'], bins=100, density=True, alpha=0.8, color='b')
+            plt.axvline(x=var, color='red', linestyle='--', label=f'95% VaR: {(var*100):.2f}%')
+            plt.title('VaR Distribution for 1-Day Returns')
+            
+
         elif time_slot == '1wk':
-            var = calculate_var(data['Adj Close'].pct_change(periods=7).dropna())
+            data['1wk'] = data['Adj Close'].pct_change(periods=7)
+            var = calculate_var(data['1wk'].dropna())
+
+            figure = plt.figure(figsize=(10, 6))
+            plt.hist(data['1wk'], bins=100, density=True, alpha=0.8, color='b')
+            plt.axvline(x=var, color='red', linestyle='--', label=f'95% VaR: {(var*100):.2f}%')
+            plt.title('VaR Distribution for 7-Day Returns')
+           
+
         elif time_slot == '1mo':
-            var = calculate_var(data['Adj Close'].pct_change(periods=31).dropna())
+            data['1mo'] = data['Adj Close'].pct_change(periods=31)
+            var = calculate_var(data['1mo'].dropna())
+
+            figure = plt.figure(figsize=(10, 6))
+            plt.hist(data['1mo'], bins=100, density=True, alpha=0.8, color='b')
+            plt.axvline(x=var, color='red', linestyle='--', label=f'95% VaR: {(var*100):.2f}%')
+            plt.title('VaR Distribution for 1-month Returns')
+            
         elif time_slot == 'ytd':
             year = today.year
             first = dt.datetime(year,1,1)
             diff = today.day - first.day
-            var = calculate_var(data['Adj Close'].pct_change(periods=diff).dropna())
+            data['ytd'] = data['Adj Close'].pct_change(periods=diff)
+            var = calculate_var(data['ytd'].dropna())
+
+            figure = plt.figure(figsize=(10, 6))
+            plt.hist(data['ytd'], bins=100, density=True, alpha=0.8, color='b')
+            plt.axvline(x=var, color='red', linestyle='--', label=f'95% VaR: {(var*100):.2f}%')
+            plt.title('VaR Distribution for year-to-date Returns')
+            
         elif time_slot == '1y':
-            var = calculate_var(data['Adj Close'].pct_change(periods=365).dropna())
+            data['1y'] = data['Adj Close'].pct_change(periods=365)
+            var = calculate_var(data['1y'].dropna())
+
+            figure = plt.figure(figsize=(10, 6))
+            plt.hist(data['1y'], bins=100, density=True, alpha=0.8, color='b')
+            plt.axvline(x=var, color='red', linestyle='--', label=f'95% VaR: {(var*100):.2f}%')
+            plt.title('VaR Distribution for 1-year Returns')
+            
         elif time_slot == '3y':
-            var = calculate_var(data['Adj Close'].pct_change(periods=365*3).dropna())
+            data['3y'] = data['Adj Close'].pct_change(periods=365*3)
+            var = calculate_var(data['3y'].dropna())
+
+            figure = plt.figure(figsize=(10, 6))
+            plt.hist(data['3y'], bins=100, density=True, alpha=0.8, color='b')
+            plt.axvline(x=var, color='red', linestyle='--', label=f'95% VaR: {(var*100):.2f}%')
+            plt.title('VaR Distribution for 3-year Returns')
+            
         elif time_slot == '5y':
-            var = calculate_var(data['Adj Close'].pct_change(periods=365*5).dropna())
+            data['5y'] = data['Adj Close'].pct_change(periods=365*5)
+            var = calculate_var(data['5y'].dropna())
+
+            figure = plt.figure(figsize=(10, 6))
+            plt.hist(data['5y'], bins=100, density=True, alpha=0.8, color='b')
+            plt.axvline(x=var, color='red', linestyle='--', label=f'95% VaR: {(var*100):.2f}%')
+            plt.title('VaR Distribution for 5-year Returns')
+           
         elif time_slot == '10y':
-            var = calculate_var(data['Adj Close'].pct_change(periods=365*10).dropna())
+            data['10y'] = data['Adj Close'].pct_change(periods=365*10)
+            var = calculate_var(data['10y'].dropna())
+
+            figure = plt.figure(figsize=(10, 6))
+            plt.hist(data['10y'], bins=100, density=True, alpha=0.8, color='b')
+            plt.axvline(x=var, color='red', linestyle='--', label=f'95% VaR: {(var*100):.2f}%')
+            plt.title('VaR Distribution for 10-year Returns')
+            
+        plt.xlabel('Returns')
+        plt.ylabel('Frequency')
+        plt.legend()
+        plt.grid(True)
+
+        try:
+            buffer = BytesIO()
+            figure.savefig(buffer, format="svg")
+            buffer.seek(0)
+
+            # Parse the XML from the buffer
+            xml_data = buffer.getvalue().decode("utf-8")
+            tree = ET.ElementTree(ET.fromstring(xml_data))
+
+            # You can now use the 'tree' variable to access the XML structure
+            # For example, to get the root element:
+            root_element = tree.getroot()
+
+            # Print or use the XML string as needed
+            print(xml_data)
+        except Exception as error:
+            print(error)
+
+
         print(var)
+
+    
+
     except IndexError:
         print('Ikke nok data tilgjengelig til å regne VaR. Velg en kortere tidsperiode')
+    except Exception as e:
+        print(e)
     except:
         print('Noe er galt med ticker. Har du husket .OL bak norske aksjer? Det kan også hende aksjen ikke er tilgjengelig på yfinance for øyeblikket')
     
